@@ -10,11 +10,11 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-func pushHandler(local_fname string , fid string, fname string, trackerIP string, chunker *Chunker) {
+func PushHandler(local_fname string , fid string, fname string, trackerIP string, chunker *Chunker) error {
 	chunkerID, err := chunker.addDiskFile(local_fname)
 	if err != nil {
 		fmt.Printf("Chunker error: %s\n", err.Error())
-		return
+		return err
 	}
 	FileManagerAddFile(
 		StoredFile{
@@ -33,18 +33,17 @@ func pushHandler(local_fname string , fid string, fname string, trackerIP string
 	err = pushFDD(&fdd, trackerIP)
 	if err != nil {
 		fmt.Printf("Error pushing FDD: %s\n", err.Error())
-		return
+		return err
 	}
+	fmt.Printf("Successfully pushed file %s\n", fname)
+	return nil
 }
 
-func pullHandler(local_fname string, fid string, trackerIP string, chunker *Chunker) {
+func PullHandler(local_fname string, fid string, trackerIP string, chunker *Chunker) {
 	AddFileReceiver(fid, local_fname, trackerIP, chunker)
 }
 
 func main() {
-	done := false
-	var s string;
-
 	chunker := &Chunker{}
 	SAVE_PATH := os.Getenv("RSTM_SAVE_PATH")
 	if SAVE_PATH == "" {
@@ -71,6 +70,17 @@ func main() {
 
 	go sendHandler(listener, chunker)
 
+	// Check for GUI flag or default to GUI if implemented
+	if len(os.Args) > 1 && os.Args[1] == "-cli" {
+		runCLI(chunker, SAVE_PATH)
+	} else {
+		StartGUI(chunker, SAVE_PATH) // This will be defined in gui.go
+	}
+}
+
+func runCLI(chunker *Chunker, SAVE_PATH string) {
+	done := false
+	var s string;
 	for !done {
 		fmt.Scanln(&s);
 		tokens := strings.Fields(s)
@@ -88,7 +98,7 @@ func main() {
 				fmt.Scanf("%s", &fname)
 				fmt.Print("Enter tracker IP: ")
 				fmt.Scanf("%s", &trackerIP)
-				pushHandler(local_fname, fid, fname, trackerIP, chunker)
+				PushHandler(local_fname, fid, fname, trackerIP, chunker)
 			case "pull":
 				fmt.Print("Enter local file name: ")
 				var local_fname, fid, trackerIP string
@@ -97,7 +107,7 @@ func main() {
 				fmt.Scanf("%s", &fid)
 				fmt.Print("Enter tracker IP: ")
 				fmt.Scanf("%s", &trackerIP)
-				pullHandler(local_fname, fid, trackerIP, chunker)
+				PullHandler(local_fname, fid, trackerIP, chunker)
 			case "load":
 				LoadAll(SAVE_PATH, chunker)
 			case "save":
@@ -108,7 +118,6 @@ func main() {
 				done = true
 		}
 	}
-	return;
 }
 
 func generateTLSConfig() *tls.Config {
