@@ -14,6 +14,7 @@ import (
 var logArea *widget.Entry
 
 func StartGUI(chunker *Chunker, savePath string) {
+	InitTransferManager()
 	a := app.New()
 	w := a.NewWindow("Rainstorm Peer")
 	w.Resize(fyne.NewSize(600, 400))
@@ -21,11 +22,13 @@ func StartGUI(chunker *Chunker, savePath string) {
 	// Defines tabs
 	pushTab := createPushTab(w, chunker)
 	pullTab := createPullTab(w, chunker)
+	transfersTab := createTransfersTab()
 	logTab := createLogTab()
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Push", pushTab),
 		container.NewTabItem("Pull", pullTab),
+		container.NewTabItem("Transfers", transfersTab),
 		container.NewTabItem("Logs", logTab),
 	)
 
@@ -34,11 +37,11 @@ func StartGUI(chunker *Chunker, savePath string) {
 }
 
 func logMessage(msg string) {
-    if logArea != nil {
-        logArea.SetText(logArea.Text + msg + "\n")
+	if logArea != nil {
+		logArea.SetText(logArea.Text + msg + "\n")
 		// Auto scroll could be simulated by cursor position but Entry widget handles it reasonably
-		logArea.Refresh() 
-    }
+		logArea.Refresh()
+	}
 	fmt.Println(msg)
 }
 
@@ -80,15 +83,18 @@ func createPushTab(w fyne.Window, chunker *Chunker) fyne.CanvasObject {
 			return
 		}
 
+		idx := GlobalTransferManager.AddTransfer(fid, fname, "Push")
+		GlobalTransferManager.UpdateStatus(idx, StatusInProgress)
+
 		go func() {
 			logMessage(fmt.Sprintf("Pushing file: %s", fname))
 			err := PushHandler(localPath, fid, fname, trackerIP, chunker)
 			if err != nil {
 				logMessage(fmt.Sprintf("Error pushing: %s", err.Error()))
-				// We can't easily show dialog from goroutine without careful sync, 
-				// but Fyne is thread-safe for many things.
+				GlobalTransferManager.UpdateStatus(idx, StatusFailed)
 			} else {
 				logMessage("Push successful!")
+				GlobalTransferManager.UpdateStatus(idx, StatusDone)
 			}
 		}()
 	})
@@ -112,38 +118,48 @@ func createPullTab(w fyne.Window, chunker *Chunker) fyne.CanvasObject {
 	trackerIPEntry := widget.NewEntry()
 	trackerIPEntry.SetPlaceHolder("Tracker IP")
 
-    savePathEntry := widget.NewEntry()
-    savePathEntry.SetPlaceHolder("Save Path (Local filename)")
+	savePathEntry := widget.NewEntry()
+	savePathEntry.SetPlaceHolder("Save Path (Local filename)")
 
-    // Button to choose save location
-    saveButton := widget.NewButton("Choose Save Location", func() {
-        fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-            if err != nil {
-                dialog.ShowError(err, w)
-                return
-            }
-            if writer == nil {
-                return
-            }
-            savePathEntry.SetText(writer.URI().Path())
-        }, w)
-        fd.Show()
-    })
-
+	// Button to choose save location
+	saveButton := widget.NewButton("Choose Save Location", func() {
+		fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			if writer == nil {
+				return
+			}
+			savePathEntry.SetText(writer.URI().Path())
+		}, w)
+		fd.Show()
+	})
 
 	pullButton := widget.NewButton("Pull File", func() {
 		fid := fidEntry.Text
 		trackerIP := trackerIPEntry.Text
-        localPath := savePathEntry.Text
+		localPath := savePathEntry.Text
 
 		if fid == "" || trackerIP == "" || localPath == "" {
 			dialog.ShowError(fmt.Errorf("please fill all fields"), w)
 			return
 		}
 
+		idx := GlobalTransferManager.AddTransfer(fid, localPath, "Pull")
+		GlobalTransferManager.UpdateStatus(idx, StatusInProgress)
+
 		go func() {
 			logMessage(fmt.Sprintf("Pulling file ID: %s", fid))
-			PullHandler(localPath, fid, trackerIP, chunker)
+			PullHandler(localPath, fid, trackerIP, chunker, func(err error) {
+				if err != nil {
+					logMessage(fmt.Sprintf("Pull failed: %v", err))
+					GlobalTransferManager.UpdateStatus(idx, StatusFailed)
+				} else {
+					logMessage(fmt.Sprintf("Pull successful: %s", fid))
+					GlobalTransferManager.UpdateStatus(idx, StatusDone)
+				}
+			})
 			logMessage("Pull request sent (check logs/console for details)")
 		}()
 	})
@@ -154,9 +170,55 @@ func createPullTab(w fyne.Window, chunker *Chunker) fyne.CanvasObject {
 			widget.NewFormItem("File ID", fidEntry),
 			widget.NewFormItem("Tracker IP", trackerIPEntry),
 		),
-        container.New(layout.NewFormLayout(), widget.NewLabel("Save As:"), container.NewBorder(nil, nil, nil, saveButton, savePathEntry)),
+		container.New(layout.NewFormLayout(), widget.NewLabel("Save As:"), container.NewBorder(nil, nil, nil, saveButton, savePathEntry)),
 		pullButton,
 	)
+}
+
+func createTransfersTab() fyne.CanvasObject {
+	table := widget.NewTable(
+		func() (int, int) {
+			return len(GlobalTransferManager.Items), 4 // Rows, Cols
+		},
+		func() fyne.CanvasObject {
+			return widget.NewLabel("Cell Content") // Template
+		},
+		func(i widget.TableCellID, o fyne.CanvasObject) {
+			if i.Row >= len(GlobalTransferManager.Items) {
+				return
+			}
+			item := GlobalTransferManager.Items[i.Row]
+			label := o.(*widget.Label)
+			switch i.Col {
+			case 0:
+				label.SetText(item.Type)
+			case 1:
+				label.SetText(item.ID)
+			case 2:
+				label.SetText(item.FileName)
+			case 3:
+				label.SetText(string(item.Status))
+			}
+		})
+
+	table.SetColumnWidth(0, 50)
+	table.SetColumnWidth(1, 150)
+	table.SetColumnWidth(2, 200)
+	table.SetColumnWidth(3, 100)
+
+	GlobalTransferManager.RegisterListener("refresh_table", func() {
+		table.Refresh()
+	})
+
+	return container.NewBorder(
+		container.NewGridWithColumns(4,
+			widget.NewLabelWithStyle("Type", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("ID", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("File Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("Status", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		),
+		nil, nil, nil,
+		table)
 }
 
 func createLogTab() fyne.CanvasObject {
