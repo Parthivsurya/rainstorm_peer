@@ -40,7 +40,7 @@ func PushHandler(local_fname string, fid string, fname string, trackerIP string,
 	return nil
 }
 
-func PullHandler(local_fname string, fid string, trackerIP string, chunker *Chunker, onComplete func(error)) {
+func PullHandler(local_fname string, fid string, trackerIP string, chunker *Chunker, onComplete func(int, int, error)) {
 	AddFileReceiver(fid, local_fname, trackerIP, chunker, onComplete)
 }
 

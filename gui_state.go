@@ -20,6 +20,7 @@ type TransferItem struct {
 	FileName string
 	Type     string // "Push" or "Pull"
 	Status   TransferStatus
+	Progress float64
 }
 
 type TransferManager struct {
@@ -50,6 +51,7 @@ func (tm *TransferManager) AddTransfer(id, filename, ttype string) int {
 		FileName: filename,
 		Type:     ttype,
 		Status:   StatusPending,
+		Progress: 0.0,
 	}
 	tm.Items = append(tm.Items, item)
 	return len(tm.Items) - 1 // Return index
@@ -61,6 +63,19 @@ func (tm *TransferManager) UpdateStatus(index int, status TransferStatus) {
 
 	if index >= 0 && index < len(tm.Items) {
 		tm.Items[index].Status = status
+		// Notify listeners (UI refresh)
+		if refresh, ok := tm.Listeners["refresh_table"]; ok {
+			refresh()
+		}
+	}
+}
+
+func (tm *TransferManager) UpdateProgress(index int, progress float64) {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	if index >= 0 && index < len(tm.Items) {
+		tm.Items[index].Progress = progress
 		// Notify listeners (UI refresh)
 		if refresh, ok := tm.Listeners["refresh_table"]; ok {
 			refresh()

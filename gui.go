@@ -151,13 +151,20 @@ func createPullTab(w fyne.Window, chunker *Chunker) fyne.CanvasObject {
 
 		go func() {
 			logMessage(fmt.Sprintf("Pulling file ID: %s", fid))
-			PullHandler(localPath, fid, trackerIP, chunker, func(err error) {
+			PullHandler(localPath, fid, trackerIP, chunker, func(completed int, total int, err error) {
 				if err != nil {
 					logMessage(fmt.Sprintf("Pull failed: %v", err))
 					GlobalTransferManager.UpdateStatus(idx, StatusFailed)
 				} else {
-					logMessage(fmt.Sprintf("Pull successful: %s", fid))
-					GlobalTransferManager.UpdateStatus(idx, StatusDone)
+					if completed == total && total > 0 {
+						logMessage(fmt.Sprintf("Pull successful: %s", fid))
+						GlobalTransferManager.UpdateStatus(idx, StatusDone)
+						GlobalTransferManager.UpdateProgress(idx, 100.0)
+					} else if total > 0 {
+						progress := float64(completed) / float64(total) * 100.0
+						GlobalTransferManager.UpdateProgress(idx, progress)
+						// logMessage(fmt.Sprintf("Progress: %.1f%%", progress)) // Optional: don't spam logs
+					}
 				}
 			})
 			logMessage("Pull request sent (check logs/console for details)")
@@ -178,7 +185,7 @@ func createPullTab(w fyne.Window, chunker *Chunker) fyne.CanvasObject {
 func createTransfersTab() fyne.CanvasObject {
 	table := widget.NewTable(
 		func() (int, int) {
-			return len(GlobalTransferManager.Items), 4 // Rows, Cols
+			return len(GlobalTransferManager.Items), 5 // Rows, Cols
 		},
 		func() fyne.CanvasObject {
 			return widget.NewLabel("Cell Content") // Template
@@ -198,6 +205,8 @@ func createTransfersTab() fyne.CanvasObject {
 				label.SetText(item.FileName)
 			case 3:
 				label.SetText(string(item.Status))
+			case 4:
+				label.SetText(fmt.Sprintf("%.1f%%", item.Progress))
 			}
 		})
 
@@ -205,17 +214,19 @@ func createTransfersTab() fyne.CanvasObject {
 	table.SetColumnWidth(1, 150)
 	table.SetColumnWidth(2, 200)
 	table.SetColumnWidth(3, 100)
+	table.SetColumnWidth(4, 80)
 
 	GlobalTransferManager.RegisterListener("refresh_table", func() {
 		table.Refresh()
 	})
 
 	return container.NewBorder(
-		container.NewGridWithColumns(4,
+		container.NewGridWithColumns(5,
 			widget.NewLabelWithStyle("Type", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			widget.NewLabelWithStyle("ID", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			widget.NewLabelWithStyle("File Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			widget.NewLabelWithStyle("Status", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("Progress", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		),
 		nil, nil, nil,
 		table)

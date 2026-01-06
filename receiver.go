@@ -105,13 +105,13 @@ func LoadReceivers(path string, chunker *Chunker) error {
 	}
 }
 
-func AddFileReceiver(fileID string, local_fname string, trackerIP string, chunker *Chunker, onComplete func(error)) {
+func AddFileReceiver(fileID string, local_fname string, trackerIP string, chunker *Chunker, onComplete func(int, int, error)) {
 
 	fdd, err := fetchFDD(fileID, trackerIP)
 	if err != nil {
 		fmt.Printf("Error fetching FDD: %v\n", err)
 		if onComplete != nil {
-			onComplete(err)
+			onComplete(0, 0, err)
 		}
 		return
 	}
@@ -186,14 +186,14 @@ func fetchFDD(fileID string, trackerIP string) (common.FileDownloadData, error) 
 	return fdd, nil
 }
 
-func fileReceiver(fdd common.FileDownloadData, dest string, chunker *Chunker, chunkerID uuid.UUID, onComplete func(error)) error {
+func fileReceiver(fdd common.FileDownloadData, dest string, chunker *Chunker, chunkerID uuid.UUID, onComplete func(int, int, error)) error {
 	tstart := time.Now()
 	defer RemoveFileReceiver(fdd.FileID)
 
 	if len(fdd.Peers) == 0 {
 		err := errors.New("No peers for given file")
 		if onComplete != nil {
-			onComplete(err)
+			onComplete(0, 0, err)
 		}
 		return err
 	}
@@ -204,7 +204,7 @@ func fileReceiver(fdd common.FileDownloadData, dest string, chunker *Chunker, ch
 	n_peers := 0
 
 	for n_peers < MAX_RECV_THREADS && next_peer < len(fdd.Peers) {
-		go fileReceiveStream(fdd, chunkerID, fdd.Peers[next_peer], chunker, trigChan)
+		go fileReceiveStream(fdd, chunkerID, fdd.Peers[next_peer], chunker, trigChan, onComplete)
 		n_peers += 1
 		next_peer += 1
 	}
@@ -217,7 +217,7 @@ func fileReceiver(fdd common.FileDownloadData, dest string, chunker *Chunker, ch
 			n_fail += 1
 			n_peers -= 1
 			if next_peer < len(fdd.Peers) {
-				go fileReceiveStream(fdd, chunkerID, fdd.Peers[next_peer], chunker, trigChan)
+				go fileReceiveStream(fdd, chunkerID, fdd.Peers[next_peer], chunker, trigChan, onComplete)
 				n_peers += 1
 				next_peer += 1
 			} else if n_fail == len(fdd.Peers) {
@@ -227,7 +227,7 @@ func fileReceiver(fdd common.FileDownloadData, dest string, chunker *Chunker, ch
 				}
 				err := errors.New("All peers have failed")
 				if onComplete != nil {
-					onComplete(err)
+					onComplete(0, 0, err)
 				}
 				return err
 			}
@@ -240,14 +240,14 @@ func fileReceiver(fdd common.FileDownloadData, dest string, chunker *Chunker, ch
 	if err != nil {
 		fmt.Println("Failed while unchunking:", err)
 		if onComplete != nil {
-			onComplete(err)
+			onComplete(0, 0, err)
 		}
 		return err
 	}
 	fmt.Println("Done unchunking file ", dest)
 	fmt.Printf("File transfer took %v\n", time.Now().Sub(tstart))
 	if onComplete != nil {
-		onComplete(nil)
+		onComplete(fdd.ChunkCount, fdd.ChunkCount, nil)
 	}
 	return nil
 }
@@ -257,7 +257,8 @@ func fileReceiveStream(
 	chunkerID uuid.UUID,
 	peer common.Peer,
 	chunker *Chunker,
-	trig chan int) error {
+	trig chan int,
+	onUpdate func(int, int, error)) error {
 
 	quicConf := quic.Config{
 		MaxIdleTimeout: 60 * time.Second,
@@ -387,6 +388,10 @@ func fileReceiveStream(
 			}
 
 			chunker.markChunkDone(chunkerID, cam.Chunks[i])
+			if onUpdate != nil {
+				done, total := chunker.GetProgress(chunkerID)
+				onUpdate(done, total, nil)
+			}
 
 		}
 		iters += 1
