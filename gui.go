@@ -210,6 +210,27 @@ func createTransfersTab() fyne.CanvasObject {
 			}
 		})
 
+	// Configure Headers
+	table.ShowHeaderRow = true
+	table.CreateHeader = func() fyne.CanvasObject {
+		return widget.NewLabelWithStyle("Header", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	}
+	table.UpdateHeader = func(id widget.TableCellID, o fyne.CanvasObject) {
+		label := o.(*widget.Label)
+		switch id.Col {
+		case 0:
+			label.SetText("Type")
+		case 1:
+			label.SetText("ID")
+		case 2:
+			label.SetText("File Name")
+		case 3:
+			label.SetText("Status")
+		case 4:
+			label.SetText("Progress")
+		}
+	}
+
 	table.SetColumnWidth(0, 50)
 	table.SetColumnWidth(1, 150)
 	table.SetColumnWidth(2, 200)
@@ -220,16 +241,7 @@ func createTransfersTab() fyne.CanvasObject {
 		table.Refresh()
 	})
 
-	return container.NewBorder(
-		container.NewGridWithColumns(5,
-			widget.NewLabelWithStyle("Type", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			widget.NewLabelWithStyle("ID", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			widget.NewLabelWithStyle("File Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			widget.NewLabelWithStyle("Status", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			widget.NewLabelWithStyle("Progress", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		),
-		nil, nil, nil,
-		table)
+	return container.NewMax(table)
 }
 
 func createLogTab() fyne.CanvasObject {
