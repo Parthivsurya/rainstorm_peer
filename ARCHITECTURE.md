@@ -82,8 +82,8 @@ sequenceDiagram
     participant Tracker
 
     Note over Peer: User requests 'pull'
-    Peer->>Tracker: TCP Dial (Port 8081)
-    Peer->>Tracker: JSON {type: "download_start", file_id: "..."}
+    Peer->>Tracker: TCP Dial (Tracker Port)
+    Peer->>Tracker: JSON {class: "init", type: "download_start", file_id: "..."}
     Tracker-->>Peer: JSON {FileDownloadData (FDD)}
     Tracker-->>Peer: Stream Checksums
     Note over Peer: Peer receives peer list & chunk hashes
