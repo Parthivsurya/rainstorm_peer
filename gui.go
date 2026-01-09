@@ -95,6 +95,7 @@ func createPushTab(w fyne.Window, chunker *Chunker) fyne.CanvasObject {
 			} else {
 				logMessage("Push successful!")
 				GlobalTransferManager.UpdateStatus(idx, StatusDone)
+				GlobalTransferManager.UpdateProgress(idx, 100.0)
 			}
 		}()
 	})
