@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-);
+)
 
 func must(a any, err error) any {
 	if err == nil {
@@ -22,7 +22,7 @@ func must(a any, err error) any {
 	panic(err)
 }
 
-const CHUNK_SIZE int64 = 10240;
+const CHUNK_SIZE int64 = 10240
 
 const (
 	CHUNK_EMPTY = iota
@@ -31,27 +31,27 @@ const (
 )
 
 type ChunkedFile struct {
-	Chunks []Chunk;
-	ChunksDone int;
-};
+	Chunks     []Chunk
+	ChunksDone int
+}
 
 type Chunk struct {
-	FileName string;
-	Status int;
-	Hash string;
-};
+	FileName string
+	Status   int
+	Hash     string
+}
 
 type Chunker struct {
-	chunkCache map[uuid.UUID]ChunkedFile; // Map File ID to []Chunk
-	chunkMutex sync.Mutex;
-	chunkPath string;
-};
+	chunkCache map[uuid.UUID]ChunkedFile // Map File ID to []Chunk
+	chunkMutex sync.Mutex
+	chunkPath  string
+}
 
 func (self *Chunker) init(chunkPath string) error {
-	self.chunkPath = chunkPath;
+	self.chunkPath = chunkPath
 	_, err := os.Stat(chunkPath)
 	if os.IsNotExist(err) {
-		err = os.MkdirAll(chunkPath, 0777);
+		err = os.MkdirAll(chunkPath, 0777)
 	} else if err != nil {
 		return err
 	}
@@ -69,10 +69,9 @@ func (self *Chunker) getChunksUnsafe(fileID uuid.UUID) ([]Chunk, error) {
 	cf, ok := self.chunkCache[fileID]
 	if !ok {
 		return []Chunk{}, errors.New(fmt.Sprintf("Unknown file ID %v", fileID))
-	} 
+	}
 	return cf.Chunks, nil
 }
-
 
 func (self *Chunker) addDiskFile(fname string) (uuid.UUID, error) {
 	self.chunkMutex.Lock()
@@ -87,7 +86,7 @@ func (self *Chunker) addDiskFile(fname string) (uuid.UUID, error) {
 	}
 	size := fstat.Size()
 	chunks := int(size / CHUNK_SIZE)
-	if size % CHUNK_SIZE > 0 {
+	if size%CHUNK_SIZE > 0 {
 		chunks += 1
 	}
 	cf := make([]Chunk, chunks)
@@ -126,10 +125,10 @@ func (self *Chunker) addDiskFile(fname string) (uuid.UUID, error) {
 		//}
 
 		cf[chunk] = Chunk{
-			FileName: cfname, 
-			Status: CHUNK_DONE, 
-			Hash: fmt.Sprintf("%x", h.Sum(nil)) ,
-		};
+			FileName: cfname,
+			Status:   CHUNK_DONE,
+			Hash:     fmt.Sprintf("%x", h.Sum(nil)),
+		}
 	}
 	self.chunkCache[fileID] = ChunkedFile{Chunks: cf, ChunksDone: len(cf)}
 	return fileID, nil
@@ -145,9 +144,9 @@ func (self *Chunker) addEmptyFile(n_chunks int) uuid.UUID {
 	self.chunkCache[fileID] = ChunkedFile{Chunks: arr, ChunksDone: 0}
 
 	hash := fileID.String()
-	for i:= 0; i < n_chunks; i+=1 {
+	for i := 0; i < n_chunks; i += 1 {
 		cfname := fmt.Sprintf("%v/%v_%v.chunk", self.chunkPath, hash, i)
-		arr[i] = Chunk{FileName: cfname, Status: CHUNK_EMPTY, Hash: ""};
+		arr[i] = Chunk{FileName: cfname, Status: CHUNK_EMPTY, Hash: ""}
 	}
 
 	return fileID
@@ -192,7 +191,7 @@ func (self *Chunker) markChunkBusyIfFree(fileID uuid.UUID, chunk int) bool {
 	self.chunkMutex.Lock()
 	defer self.chunkMutex.Unlock()
 
-	ch :=  &(self.chunkCache[fileID].Chunks[chunk])
+	ch := &(self.chunkCache[fileID].Chunks[chunk])
 	if ch.Status == CHUNK_EMPTY {
 		ch.Status = CHUNK_BUSY
 		return true
@@ -206,7 +205,7 @@ func (self *Chunker) markChunkDone(fileID uuid.UUID, chunk int) {
 	defer self.chunkMutex.Unlock()
 
 	cf := self.chunkCache[fileID]
-	if (cf.Chunks[chunk].Status != CHUNK_DONE) {
+	if cf.Chunks[chunk].Status != CHUNK_DONE {
 		cf.Chunks[chunk].Status = CHUNK_DONE
 		cf.ChunksDone += 1
 		self.chunkCache[fileID] = cf
@@ -219,7 +218,7 @@ func (self *Chunker) verifyChunk(fileID uuid.UUID, chunk int, hash string) (bool
 
 	cf := self.chunkCache[fileID]
 	chk := cf.Chunks[chunk]
-	if (chk.Hash == "") {
+	if chk.Hash == "" {
 		h := sha256.New()
 		f, err := os.Open(chk.FileName)
 		defer f.Close()
@@ -276,7 +275,7 @@ func (self *Chunker) unchunk(fileID uuid.UUID, dest string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	chunks := len(cd)
 
 	buf := make([]byte, 1024)
@@ -309,7 +308,7 @@ func (self *Chunker) getDoneChunks(fileID uuid.UUID) []int {
 	cf := self.chunkCache[fileID]
 	res := make([]int, len(cf.Chunks))
 	ri := 0
-	for i := range(cf.Chunks) {
+	for i := range cf.Chunks {
 		if cf.Chunks[i].Status == CHUNK_DONE {
 			res[ri] = i
 			ri += 1
@@ -324,7 +323,7 @@ func (self *Chunker) getCheckSums(fileID uuid.UUID) []string {
 
 	cf := self.chunkCache[fileID]
 	res := make([]string, len(cf.Chunks))
-	for i := range(cf.Chunks) {
+	for i := range cf.Chunks {
 		res[i] = cf.Chunks[i].Hash
 	}
 	return res
@@ -340,7 +339,7 @@ func writeChunks(fname string, chunks []Chunk) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	for i := range(chunks) {
+	for i := range chunks {
 		st := chunks[i].Status
 		if st == CHUNK_BUSY {
 			st = CHUNK_EMPTY
@@ -364,15 +363,15 @@ func readChunks(fname string, chunks []Chunk) error {
 
 	r := csv.NewReader(f)
 
-	for i := range(chunks) {
+	for i := range chunks {
 		rec, err := r.Read()
 		if err != nil {
 			return err
 		}
 		chunks[i] = Chunk{
 			FileName: rec[0],
-			Hash: rec[1],
-			Status: must(strconv.Atoi(rec[2])).(int),
+			Hash:     rec[1],
+			Status:   must(strconv.Atoi(rec[2])).(int),
 		}
 	}
 
@@ -380,12 +379,12 @@ func readChunks(fname string, chunks []Chunk) error {
 }
 
 func (self *Chunker) saveChunker() error {
-	err := os.Mkdir(self.chunkPath + "/savefiles", 0777)
+	err := os.Mkdir(self.chunkPath+"/savefiles", 0777)
 	if !errors.Is(err, fs.ErrExist) && err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
-	err = os.Mkdir(self.chunkPath + "/savefiles/chunked", 0777)
+	err = os.Mkdir(self.chunkPath+"/savefiles/chunked", 0777)
 	if !errors.Is(err, fs.ErrExist) && err != nil {
 		fmt.Println(err.Error())
 		return err
@@ -403,13 +402,13 @@ func (self *Chunker) saveChunker() error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	for k, v := range(self.chunkCache) {
+	for k, v := range self.chunkCache {
 		w.Write([]string{
 			k.String(),
 			strconv.Itoa(v.ChunksDone),
 			strconv.Itoa(len(v.Chunks)),
 		})
-		writeChunks(self.chunkPath + "/savefiles/chunked/" + k.String(), v.Chunks)
+		writeChunks(self.chunkPath+"/savefiles/chunked/"+k.String(), v.Chunks)
 	}
 	return nil
 }
@@ -434,11 +433,22 @@ func (self *Chunker) loadChunker() error {
 		}
 		cf := ChunkedFile{
 			ChunksDone: must(strconv.Atoi(sl[1])).(int),
-			Chunks: make([]Chunk, must(strconv.Atoi(sl[2])).(int)),
+			Chunks:     make([]Chunk, must(strconv.Atoi(sl[2])).(int)),
 		}
-		readChunks(self.chunkPath + "/savefiles/chunked/" + fileID.String(), cf.Chunks)
+		readChunks(self.chunkPath+"/savefiles/chunked/"+fileID.String(), cf.Chunks)
 		self.chunkCache[fileID] = cf
 	}
 
 	return nil
+}
+
+func (self *Chunker) GetProgress(fileID uuid.UUID) (int, int) {
+	self.chunkMutex.Lock()
+	defer self.chunkMutex.Unlock()
+
+	cf, ok := self.chunkCache[fileID]
+	if !ok {
+		return 0, 0
+	}
+	return cf.ChunksDone, len(cf.Chunks)
 }

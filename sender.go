@@ -2,41 +2,43 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
+
+	common "github.com/aadit-n3rdy/rainstorm_common"
 	"github.com/google/uuid"
 
-	"github.com/quic-go/quic-go"
-	"github.com/aadit-n3rdy/rainstorm_common"
 	"net"
-);
 
-var testFileID uuid.UUID;
+	"github.com/quic-go/quic-go"
+)
+
+var testFileID uuid.UUID
 
 func pushFDD(fdd *common.FileDownloadData, trackerIP string) error {
 
 	smallfdd := common.FileDownloadData{
-		FileID: fdd.FileID,
-		FileName: fdd.FileName,
-		Peers: fdd.Peers,
-		Checksums: []string{},
+		FileID:     fdd.FileID,
+		FileName:   fdd.FileName,
+		Peers:      fdd.Peers,
+		Checksums:  []string{},
 		ChunkCount: fdd.ChunkCount,
 	}
 
-	dict := map[string]interface{} {
-		"class": "init",
-		"type": "file_register",
-		"file_download_data": 	smallfdd,
+	dict := map[string]interface{}{
+		"class":              "init",
+		"type":               "file_register",
+		"file_download_data": smallfdd,
 	}
 
 	conn, err := net.Dial("tcp", trackerIP+":"+fmt.Sprint(common.TRACKER_TCP_PORT))
-	defer conn.Close()
 
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	fdd_msg, err := json.Marshal(dict)
 	_, err = conn.Write(fdd_msg)
@@ -59,42 +61,42 @@ func sendHandler(listener *quic.Listener, chunker *Chunker) {
 		// 0. listen for connections
 		conn, err := listener.Accept(context.Background())
 		if err != nil {
-			fmt.Println("Could not accept conn from ", conn.RemoteAddr().String(), err);
+			fmt.Println("Could not accept conn from ", conn.RemoteAddr().String(), err)
 			return
 		}
 		go sendHandlerStream(conn, chunker)
 	}
 }
 
-func sendHandlerStream(conn quic.Connection, chunker* Chunker) {
+func sendHandlerStream(conn quic.Connection, chunker *Chunker) {
 	defer conn.CloseWithError(quic.ApplicationErrorCode(0), "bye!")
 
 	// 1. get file ID and file Name
 	//fmt.Println("New connection from ", conn.RemoteAddr().String())
 	stream, err := conn.OpenStream()
 	if err != nil {
-		fmt.Println("Could not open stream to ", conn.RemoteAddr().String(), err);
+		fmt.Println("Could not open stream to ", conn.RemoteAddr().String(), err)
 		return
 	}
 	defer stream.Close()
 	helloDict := map[string]interface{}{
 		"status": STATUS_OK,
-	};
+	}
 	helloMsg, err := json.Marshal(helloDict)
 	if err != nil {
-		fmt.Println("Could not marshal hello msg ", conn.RemoteAddr().String(), err);
+		fmt.Println("Could not marshal hello msg ", conn.RemoteAddr().String(), err)
 		return
 	}
 	n, err := stream.Write(helloMsg)
 	if err != nil {
-		fmt.Printf("Could not send hello\n%v bytes sent\nError: %v\n", n, err);
+		fmt.Printf("Could not send hello\n%v bytes sent\nError: %v\n", n, err)
 		return
 	}
 
 	recvBuf := make([]byte, 1024)
 	n, err = stream.Read(recvBuf)
 	if err != nil {
-		fmt.Printf("Could not read frm from %v\nError: %v\n", conn.RemoteAddr().String(), err);
+		fmt.Printf("Could not read frm from %v\nError: %v\n", conn.RemoteAddr().String(), err)
 		return
 	}
 	//fmt.Println("File request msg: ", string(recvBuf[:n]))
@@ -121,9 +123,9 @@ func sendHandlerStream(conn quic.Connection, chunker* Chunker) {
 	cam := ChunkAvailMsg{}
 	cam.Chunks = make([]int, len(cd))
 	i := 0
-	for k := range(cd) {
+	for k := range cd {
 		cam.Chunks[i] = k
-		i +=1
+		i += 1
 	}
 	camBuf, err := json.Marshal(cam)
 	if err != nil {
